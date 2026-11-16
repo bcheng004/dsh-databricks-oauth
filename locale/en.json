@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Databricks OAuth token bridge",
+    "description": "Keeps the DATABRICKS_API_KEY credential reference filled with a short-lived Databricks OAuth access token, so the AI Gateway model route authenticates without a personal access token. The token is minted by the Databricks CLI for the configured profile, checked once a minute, and replaced about five minutes before it expires; the harness re-reads the reference on every request, so a rotation needs no restart or settings edit. Sign the CLI in first with databricks auth login --profile fevm-workshop-guy; a revoked refresh token needs that command again, and this plugin never opens a browser. Turning it off stops the refresh: the last stored token then expires within the hour and the route fails with a credential error until a new credential is stored. This plugin makes no model requests and reads only the CLI's token output."
+  }
+}

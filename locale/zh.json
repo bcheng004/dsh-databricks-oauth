@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Databricks OAuth 令牌桥接",
+    "description": "让 DATABRICKS_API_KEY 凭据引用始终保存一枚短期 Databricks OAuth 访问令牌，使 AI Gateway 模型路由无需个人访问令牌即可完成认证。令牌由 Databricks CLI 按所配置的 profile 生成，每分钟检查一次，并在到期前约五分钟替换；harness 在每次请求时重新读取该引用，因此轮换令牌不需要重启或修改设置。请先执行 databricks auth login --profile fevm-workshop-guy 完成 CLI 登录；刷新令牌被吊销后需要重新执行该命令，本插件不会打开浏览器。关闭插件即停止刷新：最后写入的令牌会在一小时内过期，此后该路由会报凭据错误，直到重新写入凭据。本插件不发起任何模型请求，只读取 CLI 输出的令牌。"
+  }
+}

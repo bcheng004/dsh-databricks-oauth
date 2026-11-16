@@ -1,0 +1,24 @@
+{
+  "name": "@local/dsh-databricks-oauth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fills a DSH credential reference with a short-lived Databricks OAuth access token minted by the Databricks CLI.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
