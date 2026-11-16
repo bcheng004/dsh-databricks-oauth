@@ -3,6 +3,8 @@
 Replaces a long-lived Databricks personal access token with a short-lived OAuth
 access token for a DSH LLM route that points at the Databricks AI Gateway.
 
+![The Databricks OAuth token bridge plugin in DeepSeek Harness](docs/deepseek-harness-plugin.png)
+
 ## Why this exists
 
 The AI Gateway accepts any workspace bearer credential in `Authorization:
