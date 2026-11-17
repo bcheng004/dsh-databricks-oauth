@@ -4,6 +4,19 @@
   "private": true,
   "type": "module",
   "description": "Fills a DSH credential reference with a short-lived Databricks OAuth access token minted by the Databricks CLI.",
+  "keywords": [
+    "dsh",
+    "dsh-bundle",
+    "databricks",
+    "oauth"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bcheng004/dsh-databricks-oauth.git"
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
+  },
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",

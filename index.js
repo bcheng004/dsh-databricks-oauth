@@ -23,10 +23,18 @@ export const name = 'dsh-databricks-oauth'
  */
 export const inject = ['credentials', 'timer']
 
-/** Defaults overridden by the row's `config` in the bundle patch. */
+/**
+ * Defaults overridden by the row's `config`.
+ *
+ * `cliPath` and `profile` are empty on purpose. An empty path resolves
+ * `databricks` through `PATH`; an empty profile lets the CLI pick its own
+ * (`DATABRICKS_CONFIG_PROFILE`, else `DEFAULT`). Neither default names a
+ * particular machine or workspace, so a reader of this repository supplies only
+ * what actually differs for them.
+ */
 const DEFAULTS = {
-  cliPath: '/opt/homebrew/bin/databricks',
-  profile: 'fevm-workshop-guy',
+  cliPath: '',
+  profile: '',
   ref: 'DATABRICKS_API_KEY',
   refreshSkewMs: 5 * 60 * 1000,
   checkIntervalMs: 60 * 1000,
@@ -52,23 +60,83 @@ function pickLogger(ctx) {
 }
 
 /**
- * Run the CLI and resolve its stdout.
- * @param {string} cliPath - absolute path to the Databricks CLI.
+ * The most useful explanation a failed CLI run produced.
+ *
+ * The Databricks CLI reports many failures as a JSON object on *stdout* with a
+ * non-zero exit and an empty stderr, so a stderr-only message would discard the
+ * one line that says what to do (`UNAUTHENTICATED … run databricks auth
+ * login`). Stderr wins when it has content, then the CLI's own JSON message,
+ * then the child-process message.
+ * @param {unknown} error - the `execFile` error.
+ * @param {string | Buffer | undefined} stdout - captured standard output.
+ * @param {string | Buffer | undefined} stderr - captured standard error.
+ * @returns {string} the failure detail.
+ */
+function failureDetail(error, stdout, stderr) {
+  const stderrText = String(stderr ?? '').trim()
+  if (stderrText !== '') return stderrText
+  const stdoutText = String(stdout ?? '').trim()
+  if (stdoutText.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(stdoutText)
+      if (typeof parsed?.message === 'string' && parsed.message !== '') return parsed.message
+    } catch {
+      // Not the CLI's error envelope; fall through to the process message.
+    }
+  }
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * Run one executable and resolve its stdout.
+ * @param {string} file - executable path or a bare name resolved through `PATH`.
  * @param {string[]} args - command arguments.
  * @param {number} timeoutMs - kill the child after this long.
  * @returns {Promise<string>} standard output.
  */
-function runCli(cliPath, args, timeoutMs) {
+function execOnce(file, args, timeoutMs) {
   return new Promise((resolve, reject) => {
-    execFile(cliPath, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(file, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
-        const detail = String(stderr ?? '').trim() || error.message
-        reject(new Error(detail))
+        const failure = new Error(failureDetail(error, stdout, stderr))
+        failure.code = error.code
+        reject(failure)
         return
       }
       resolve(stdout)
     })
   })
+}
+
+/**
+ * Run the CLI, honoring the configured path and falling back to `PATH`.
+ *
+ * A GUI-launched Desktop app inherits a minimal `PATH`, so the absolute path is
+ * the reliable choice and the fallback exists for shell-launched profiles that
+ * never set one. Failing both produces a message naming the setting to fix,
+ * rather than the bare `spawn ENOENT` a reader would have to decode.
+ * @param {string} cliPath - configured executable path, possibly empty.
+ * @param {string[]} args - command arguments.
+ * @param {number} timeoutMs - kill the child after this long.
+ * @returns {Promise<string>} standard output.
+ */
+async function runCli(cliPath, args, timeoutMs) {
+  if (cliPath !== '') {
+    try {
+      return await execOnce(cliPath, args, timeoutMs)
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+  try {
+    return await execOnce('databricks', args, timeoutMs)
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      const tried = cliPath === '' ? '"databricks" on PATH' : `${cliPath} and "databricks" on PATH`
+      throw new Error(`Databricks CLI not found (tried ${tried}); set cliPath to its absolute path`)
+    }
+    throw error
+  }
 }
 
 /**
@@ -108,7 +176,7 @@ function readToken(raw) {
 export function apply(ctx, config) {
   const options = { ...DEFAULTS, ...(config ?? {}) }
   const log = pickLogger(ctx)
-  const label = `databricks-oauth[${options.profile}]`
+  const label = `databricks-oauth[${options.profile === '' ? 'default' : options.profile}]`
 
   /** @type {{token: string, expiresAt: number} | undefined} */
   let cached
@@ -129,7 +197,8 @@ export function apply(ctx, config) {
    * @returns {Promise<{token: string, expiresAt: number}>} a fresh token.
    */
   async function mint(force) {
-    const args = ['auth', 'token', '-p', options.profile, '-o', 'json']
+    const args = ['auth', 'token', '-o', 'json']
+    if (options.profile !== '') args.push('-p', options.profile)
     if (force) args.push('--force-refresh')
     const raw = await runCli(options.cliPath, args, options.timeoutMs)
     return readToken(raw)

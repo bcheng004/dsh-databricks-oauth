@@ -18,6 +18,44 @@ DSH has no built-in token source for a hand-declared route, so this plugin
 supplies one. It is the only piece that is missing: the `databricks` provider in
 `cordis.patch.yml` keeps `apiKeyEnv: DATABRICKS_API_KEY` untouched.
 
+## Install
+
+Requirements: DeepSeek Harness 0.2.2 or newer (the plugin needs the
+`credentials` and `timer` services), the Databricks CLI signed in with
+`databricks auth login --profile <profile>`, and an LLM route pointing at your
+workspace's AI Gateway whose `apiKeyEnv` names the reference this plugin fills.
+
+**Plugins → Add plugin** accepts a package name, Git address, tarball, or
+absolute local path:
+
+```
+github:bcheng004/dsh-databricks-oauth
+```
+
+From a shell, pinned to a commit so DSH offers **Update**:
+
+```sh
+dsh plugin --profile <profile-name> add github:bcheng004/dsh-databricks-oauth#<commit>
+```
+
+Then name your workspace in your own profile's `cordis.patch.yml`. An override
+replaces the row's complete configuration, so list every field you need:
+
+```yaml
+- id: databricks-oauth
+  name: '@local/dsh-databricks-oauth'
+  config:
+    profile: my-workspace            # ~/.databrickscfg profile of the route's workspace
+    cliPath: /opt/homebrew/bin/databricks
+    ref: DATABRICKS_API_KEY
+```
+
+Check the install actually minted a token before trusting it: the credential
+store (`~/.dsh/.credentials.yaml`, mode 600) should hold a JWT whose `exp` is an
+hour out, and `refs.<your ref>` is the name the route's `apiKeyEnv` uses. Without
+that, requests fail with `MISSING_CREDENTIAL` (no value) rather than an
+authentication error.
+
 ## How it works
 
 Every `checkIntervalMs` the plugin decides whether the stored token is close
@@ -25,8 +63,11 @@ enough to expiry to be replaced. Until then it does nothing — no process is
 spawned. Inside the refresh window it asks the CLI for a token:
 
 ```sh
-/opt/homebrew/bin/databricks auth token -p <profile> -o json --force-refresh
+databricks auth token -p <profile> -o json --force-refresh
 ```
+
+`cliPath` decides which binary runs; the `-p` flag is omitted when no profile is
+configured.
 
 `--force-refresh` matters. The CLI serves its cached access token while that
 token is still valid, so a plain call inside the window would hand back the very
@@ -48,8 +89,8 @@ recovers.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `cliPath` | `/opt/homebrew/bin/databricks` | Absolute path to the CLI. A GUI-launched app inherits a minimal `PATH`, so the bare name does not resolve. |
-| `profile` | `fevm-workshop-guy` | `~/.databrickscfg` profile, which fixes the workspace. It must match the host of the route's `baseURL`. |
+| `cliPath` | empty | Absolute path to the CLI. Empty resolves `databricks` through `PATH`, which a GUI-launched app does not have, so Desktop installs should set it; a configured path that no longer exists falls back to `PATH`. |
+| `profile` | empty | `~/.databrickscfg` profile, which fixes the workspace and must match the host of the route's `baseURL`. Empty lets the CLI choose (`DATABRICKS_CONFIG_PROFILE`, else `DEFAULT`). |
 | `ref` | `DATABRICKS_API_KEY` | Credential reference the route's `apiKeyEnv` names. |
 | `refreshSkewMs` | `300000` | Mint again when the stored token is this close to expiry. |
 | `checkIntervalMs` | `60000` | How often to consider refreshing. |
@@ -60,6 +101,11 @@ recovers.
 - The Databricks CLI must be installed and signed in to `profile`; sign in with
   `databricks auth login --profile <profile>`. The plugin never opens a browser
   and cannot renew a revoked refresh token.
+- Leaving `profile` empty delegates to the CLI, which uses
+  `DATABRICKS_CONFIG_PROFILE`, else `DEFAULT`. That works only while the default
+  profile's refresh token is valid; otherwise each attempt fails with the CLI's
+  own `UNAUTHENTICATED` message, which the plugin logs while leaving the stored
+  credential untouched.
 - The CLI keeps its token cache in plaintext (`~/.databricks/token-cache.json`).
 - The stored token is a real credential in `~/.dsh/.credentials.yaml` (mode
   600) and rotates hourly; it is not written to any configuration file.

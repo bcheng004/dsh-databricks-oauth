@@ -1,9 +1,6 @@
+# Inserts the plugin with its own defaults. Workspace-specific settings belong in
+# your profile's cordis.patch.yml as an `- id: databricks-oauth` override; see
+# the Install section of README.md for the fields that normally differ.
 - insert:
     - id: databricks-oauth
       name: '@local/dsh-databricks-oauth'
-      config:
-        cliPath: /opt/homebrew/bin/databricks
-        profile: fevm-workshop-guy
-        ref: DATABRICKS_API_KEY
-        refreshSkewMs: 300000
-        checkIntervalMs: 60000
