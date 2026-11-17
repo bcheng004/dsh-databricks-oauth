@@ -20,10 +20,19 @@ supplies one. It is the only piece that is missing: the `databricks` provider in
 
 ## Install
 
-Requirements: DeepSeek Harness 0.2.2 or newer (the plugin needs the
-`credentials` and `timer` services), the Databricks CLI signed in with
-`databricks auth login --profile <profile>`, and an LLM route pointing at your
-workspace's AI Gateway whose `apiKeyEnv` names the reference this plugin fills.
+### Before you start
+
+- **DeepSeek Harness 0.2.2 or newer.** The bundle declares
+  `engines.dsh: ">=0.2.2-rc.3 <0.3.0"`, so an older build, or a 0.3 build, is
+  refused while installing instead of failing at request time. It also needs the
+  `credentials` and `timer` services, which every base-backed profile mounts.
+- **A signed-in Databricks CLI.** Run `databricks auth login --profile
+  <profile>` once; the plugin never opens a browser and cannot renew a revoked
+  refresh token.
+- **A model route** whose `baseURL` is your workspace's AI Gateway and whose
+  `apiKeyEnv` names the credential reference this plugin fills.
+
+### 1. Add the bundle
 
 **Plugins → Add plugin** accepts a package name, Git address, tarball, or
 absolute local path:
@@ -32,14 +41,21 @@ absolute local path:
 github:bcheng004/dsh-databricks-oauth
 ```
 
-From a shell, pinned to a commit so DSH offers **Update**:
+The same install from a shell, pinned to a commit so DSH can offer **Update**
+later — a branch or tag spec is not updatable:
 
 ```sh
-dsh plugin --profile <profile-name> add github:bcheng004/dsh-databricks-oauth#<commit>
+dsh plugin --profile <profile-name> add github:bcheng004/dsh-databricks-oauth#86d00de2bd0d11ce48d9c5effc4505d1db45e53f
 ```
 
-Then name your workspace in your own profile's `cordis.patch.yml`. An override
-replaces the row's complete configuration, so list every field you need:
+A local clone added through **Add plugin** with its absolute directory works too,
+and keeps edits live through the resulting `link:` dependency.
+
+### 2. Configure it for your workspace
+
+The bundle ships no machine-specific values, so name yours in your own profile's
+`cordis.patch.yml`. An override replaces the row's complete configuration, so
+list every field you need:
 
 ```yaml
 - id: databricks-oauth
@@ -47,14 +63,35 @@ replaces the row's complete configuration, so list every field you need:
   config:
     profile: my-workspace            # ~/.databrickscfg profile of the route's workspace
     cliPath: /opt/homebrew/bin/databricks
-    ref: DATABRICKS_API_KEY
+    ref: DATABRICKS_API_KEY          # must equal the route's apiKeyEnv
 ```
 
-Check the install actually minted a token before trusting it: the credential
-store (`~/.dsh/.credentials.yaml`, mode 600) should hold a JWT whose `exp` is an
-hour out, and `refs.<your ref>` is the name the route's `apiKeyEnv` uses. Without
-that, requests fail with `MISSING_CREDENTIAL` (no value) rather than an
-authentication error.
+The two that almost always differ are `profile` — a wrong value silently mints
+tokens for the wrong workspace — and `cliPath`, because a GUI-launched app has a
+minimal `PATH` and does not resolve a bare `databricks`. Intel Macs use
+`/usr/local/bin/databricks`.
+
+### 3. Verify it minted a token
+
+The credential store (`~/.dsh/.credentials.yaml`, mode 600) should hold a JWT
+under `refs.<your ref>` whose `exp` is about an hour out:
+
+```sh
+databricks auth token -p <profile> -o json | jq -r .expiry
+```
+
+Then send one message. An empty reference fails as `MISSING_CREDENTIAL` (nothing
+stored) rather than as an authentication error, and a token from the wrong
+workspace fails authentication instead — the two point at different mistakes.
+
+### Notes for a shared deployment
+
+- **Every user needs their own login.** The plugin drives U2M only; the CLI's
+  `auth token` does not support M2M, so a headless or team-wide deployment needs
+  the service-principal variant instead of this bundle.
+- **`@local/` is a placeholder package name**, not a published scope. It works
+  from a Git install; publishing to npm would mean renaming the package and the
+  row reference together.
 
 ## How it works
 
