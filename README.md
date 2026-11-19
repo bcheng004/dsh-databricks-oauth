@@ -117,6 +117,26 @@ When the returned token differs from the cached one, the plugin calls
 request through that seam, so the next model call uses the new token with no
 restart and no configuration edit.
 
+### Working alongside other plugins
+
+Activation completes only after the first mint attempt settles, so a plugin that
+loads later in the bundle order and connects at startup with the same reference
+starts against a token minted now, not one the previous session left behind.
+This matters for MCP rows, which connect during composition rather than on first
+use.
+
+A failure in that first attempt is logged, not thrown: rejecting activation
+would remove the only thing able to repair the credential.
+
+Consumers pick up later rotations in one of two ways, and both work:
+
+- **Per request** — a plugin that resolves the reference on each call (as the
+  Genie One `genie_answer` tool does) simply uses the new value next time.
+- **Per connection** — the MCP client rebuilds its connection when a resolved
+  `${credential:REF}` header changes, so a rotated token reconnects rather than
+  leaving a dead session. Give such a row a reconnect budget that outlasts a
+  slow refresh.
+
 A failed mint leaves the stored credential exactly as it is. Deleting the
 reference instead would turn a temporary CLI outage into `MISSING_CREDENTIAL`
 for every request; a token that merely expired fails only until the CLI

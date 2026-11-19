@@ -170,10 +170,16 @@ function readToken(raw) {
 
 /**
  * Mint tokens on a timer and store each new one in the credential seam.
+ *
+ * `apply` stays pending until the first attempt settles, so a plugin that loads
+ * after this one and connects at startup with the same reference sees a token
+ * minted now rather than whatever the previous session left behind. A failed
+ * first attempt is logged rather than thrown: rejecting activation here would
+ * remove the only thing that can repair the credential.
  * @param {object} ctx - the plugin context.
  * @param {object} config - the row's config, overriding {@link DEFAULTS}.
  */
-export function apply(ctx, config) {
+export async function apply(ctx, config) {
   const options = { ...DEFAULTS, ...(config ?? {}) }
   const log = pickLogger(ctx)
   const label = `databricks-oauth[${options.profile === '' ? 'default' : options.profile}]`
@@ -258,6 +264,10 @@ export function apply(ctx, config) {
 
   ctx.on('dispose', () => { stopped = true })
 
-  tick()
+  await refresh().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error)
+    log.warn?.(`${label}: first mint failed: ${message} (keeping the stored credential as it is)`)
+  })
+
   ctx.interval(tick, options.checkIntervalMs)
 }
